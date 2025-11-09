@@ -22,13 +22,52 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
         self._origin = QtCore.QPoint()
         self._rubber_band = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Shape.Rectangle, self)
         self._current_rect = QtCore.QRect()
+        self._background = QtGui.QPixmap()
+        self._virtual_geometry = QtCore.QRect()
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
     def show_overlay(self) -> None:
+        self._virtual_geometry = self._compute_virtual_geometry()
+        self.setGeometry(self._virtual_geometry)
+        self._background = self._grab_virtual_desktop(self._virtual_geometry)
         self.show()
         self.raise_()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+    def _compute_virtual_geometry(self) -> QtCore.QRect:
+        screens = QtGui.QGuiApplication.screens()
+        if not screens:
+            primary = QtGui.QGuiApplication.primaryScreen()
+            return primary.geometry() if primary is not None else QtCore.QRect()
+        geometry = QtCore.QRect(screens[0].geometry())
+        for screen in screens[1:]:
+            geometry = geometry.united(screen.geometry())
+        return geometry
+
+    def _grab_virtual_desktop(self, geometry: QtCore.QRect) -> QtGui.QPixmap:
+        result = QtGui.QPixmap(geometry.size())
+        result.fill(QtCore.Qt.GlobalColor.transparent)
+
+        painter = QtGui.QPainter(result)
+        screens = QtGui.QGuiApplication.screens()
+        if not screens:
+            primary = QtGui.QGuiApplication.primaryScreen()
+            if primary is not None:
+                painter.drawPixmap(QtCore.QPoint(), primary.grabWindow(0))
+            painter.end()
+            return result
+
+        for screen in screens:
+            pixmap = screen.grabWindow(0)
+            top_left = screen.geometry().topLeft() - geometry.topLeft()
+            target_rect = QtCore.QRect(top_left, screen.geometry().size())
+            painter.drawPixmap(target_rect, pixmap)
+        painter.end()
+        return result
 
     # ------------------------------------------------------------------
     # QWidget overrides
@@ -75,19 +114,17 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        overlay_color = QtGui.QColor(0, 0, 0, 120)
-        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        if not self._background.isNull():
+            painter.drawPixmap(0, 0, self._background)
 
-        full_rect = QtCore.QRectF(self.rect())
-        path = QtGui.QPainterPath()
-        path.addRect(full_rect)
+        overlay_color = QtGui.QColor(0, 0, 0, 160)
+        painter.fillRect(self.rect(), overlay_color)
 
         if not self._current_rect.isNull() and self._current_rect.isValid():
-            selection_path = QtGui.QPainterPath()
-            selection_path.addRect(QtCore.QRectF(self._current_rect))
-            path = path.subtracted(selection_path)
-
-        painter.fillPath(path, overlay_color)
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_Clear)
+            painter.fillRect(self._current_rect, QtCore.Qt.GlobalColor.transparent)
+            painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceOver)
+            painter.fillRect(self._current_rect, QtGui.QColor(30, 144, 255, 60))
         super().paintEvent(event)
 
 
