@@ -1,0 +1,5 @@
+PySide6>=6.5
+mss>=9.0
+Pillow>=9.0
+pytesseract>=0.3.10
+uiautomation>=2.0.18; sys_platform == 'win32'
