@@ -21,6 +21,7 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
 
         self._origin = QtCore.QPoint()
         self._rubber_band = QtWidgets.QRubberBand(QtWidgets.QRubberBand.Shape.Rectangle, self)
+        self._current_rect = QtCore.QRect()
 
     # ------------------------------------------------------------------
     # Public API
@@ -37,6 +38,8 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
             self._origin = event.position().toPoint()
             self._rubber_band.setGeometry(QtCore.QRect(self._origin, QtCore.QSize()))
             self._rubber_band.show()
+            self._current_rect = QtCore.QRect(self._origin, self._origin)
+            self.update()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
@@ -44,6 +47,8 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
             point = event.position().toPoint()
             rect = QtCore.QRect(self._origin, point).normalized()
             self._rubber_band.setGeometry(rect)
+            self._current_rect = rect
+            self.update()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
@@ -54,6 +59,8 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
                 self.selection_made.emit(rect)
             else:
                 self.selection_cancelled.emit()
+            self._current_rect = QtCore.QRect()
+            self.update()
             self.close()
         super().mouseReleaseEvent(event)
 
@@ -66,9 +73,21 @@ class ScreenSelectionOverlay(QtWidgets.QWidget):  # pragma: no cover - interacti
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
-        painter.setBrush(QtGui.QColor(0, 0, 0, 80))
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+
+        overlay_color = QtGui.QColor(0, 0, 0, 120)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-        painter.drawRect(self.rect())
+
+        full_rect = QtCore.QRectF(self.rect())
+        path = QtGui.QPainterPath()
+        path.addRect(full_rect)
+
+        if not self._current_rect.isNull() and self._current_rect.isValid():
+            selection_path = QtGui.QPainterPath()
+            selection_path.addRect(QtCore.QRectF(self._current_rect))
+            path = path.subtracted(selection_path)
+
+        painter.fillPath(path, overlay_color)
         super().paintEvent(event)
 
 
